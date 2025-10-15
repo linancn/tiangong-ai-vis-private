@@ -1,7 +1,19 @@
 {
   "name": "@tiangong-ai/vis-server",
-  "version": "0.0.22",
-  "description": "TianGong AI VIS Private Server",
+  "version": "0.0.1",
+  "description": "A high-performance chart rendering service based on @antv/gpt-vis-ssr with cluster support, concurrency control, and HTTP API",
+  "keywords": [
+    "visualization",
+    "chart",
+    "render",
+    "server",
+    "antv",
+    "gpt-vis",
+    "ssr",
+    "tiangong",
+    "cluster",
+    "express"
+  ],
   "license": "MIT",
   "author": "Nan LI",
   "type": "module",
@@ -14,8 +26,15 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TianGong-AI/tiangong-ai-vis-private"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "build": "shx rm -rf dist && tsc && shx cp -r public dist/ && shx chmod +x dist/src/*.js",
+    "build": "shx rm -rf dist && tsc && shx chmod +x dist/src/*.js",
     "build:clean": "shx rm -rf dist",
     "start": "npm run build && npx dotenv -e .env -- node dist/src/index.js",
     "test": "node test/tidas_validation_test.js",

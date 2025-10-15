@@ -450,7 +450,7 @@ function getAvailableParallelism(): number {
 function determineWorkerCount(): number {
   const requested = parsePositiveInteger(
     process.env.WORKERS,
-    getAvailableParallelism(),
+    4,
   );
   return Math.max(1, Math.min(getAvailableParallelism(), requested));
 }
