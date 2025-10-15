@@ -127,6 +127,7 @@ npm run build:clean
 ```
 
 构建过程:
+
 1. 删除旧的 `dist` 目录
 2. 使用 TypeScript 编译器编译 TS 文件
 3. 复制 `public` 目录到 `dist`（如果存在）
@@ -386,5 +387,4 @@ npm run build
 ## 许可证
 
 MIT License - 详见 LICENSE 文件
-
 ````

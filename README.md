@@ -135,7 +135,7 @@ X-Render-Time: 123.45
 所有配置项都是**可选的**，未设置时会使用默认值。
 
 | 变量名 | 描述 | 默认值 | 说明 |
-|--------|------|--------|------|
+| --- | --- | --- | --- |
 | `PORT` | 服务端口 | `3000` | HTTP 服务监听端口 |
 | `HOST` | 监听地址 | `0.0.0.0` | 监听所有网络接口 |
 | `WORKERS` | 工作进程数量 | `4` | 推荐 2-8 个，根据负载调整 |
@@ -216,17 +216,19 @@ CMD ["node", "dist/src/index.js"]
 
 ```json
 {
-  "apps": [{
-    "name": "vis-server",
-    "script": "dist/src/index.js",
-    "instances": 1,
-    "exec_mode": "fork",
-    "env": {
-      "PORT": 3000,
-      "WORKERS": 4,
-      "MAX_CONCURRENCY": 4
+  "apps": [
+    {
+      "name": "vis-server",
+      "script": "dist/src/index.js",
+      "instances": 1,
+      "exec_mode": "fork",
+      "env": {
+        "PORT": 3000,
+        "WORKERS": 4,
+        "MAX_CONCURRENCY": 4
+      }
     }
-  }]
+  ]
 }
 ```
 
@@ -265,13 +267,13 @@ pm2 start ecosystem.config.json
 
 ## 错误处理
 
-| HTTP 状态码 | 错误代码 | 描述 |
-|------------|---------|------|
-| 400 | `invalid_json` | 请求体不是有效的 JSON |
-| 400 | `invalid_request` | 缺少必需参数或参数格式错误 |
-| 404 | `not_found` | 路由不存在 |
-| 500 | `internal_error` | 内部渲染错误 |
-| 503 | `service_unavailable` | 服务繁忙，队列已满 |
+| HTTP 状态码 | 错误代码              | 描述                       |
+| ----------- | --------------------- | -------------------------- |
+| 400         | `invalid_json`        | 请求体不是有效的 JSON      |
+| 400         | `invalid_request`     | 缺少必需参数或参数格式错误 |
+| 404         | `not_found`           | 路由不存在                 |
+| 500         | `internal_error`      | 内部渲染错误               |
+| 503         | `service_unavailable` | 服务繁忙，队列已满         |
 
 当收到 503 错误时，客户端应该实现重试机制（建议使用指数退避策略）。
 

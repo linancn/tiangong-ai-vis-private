@@ -1,19 +1,29 @@
 #!/usr/bin/env node
 
-import cluster from 'node:cluster';
-import { createServer, type Server } from 'node:http';
-import os from 'node:os';
-import process from 'node:process';
-import express, {
-  type Express,
-  type NextFunction,
-  type Request,
-  type Response,
-} from 'express';
 import { render } from '@antv/gpt-vis-ssr';
 import type { Options } from '@antv/gpt-vis-ssr/dist/esm/types.js';
+import express, { type Express, type NextFunction, type Request, type Response } from 'express';
+import cluster from 'node:cluster';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import fs from 'node:fs/promises';
+import { createServer, type Server } from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-type ResponseType = 'buffer' | 'base64';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.join(__dirname, 'public');
+const imagesDir = path.join(publicDir, 'images');
+
+try {
+  mkdirSync(imagesDir, { recursive: true });
+} catch (error) {
+  console.error('Failed to ensure image output directory', error);
+  throw error;
+}
 
 export type ServerConfig = {
   port: number;
@@ -23,14 +33,6 @@ export type ServerConfig = {
   maxQueueSize: number;
   keepAliveTimeoutMs: number;
   headersTimeoutMs: number;
-};
-
-type RenderRequestBody = {
-  options: Options;
-  meta?: unknown;
-  responseType?: ResponseType;
-  contentType?: string;
-  fileName?: string;
 };
 
 class HttpError extends Error {
@@ -122,22 +124,13 @@ export function resolveConfig(
   const host = process.env.HOST ?? '0.0.0.0';
   const bodyLimit = process.env.BODY_LIMIT ?? '1mb';
 
-  const defaultConcurrency = Math.max(
-    1,
-    Math.floor(cpuCount / Math.max(workerCount, 1)) || 1,
-  );
-  const maxConcurrency = parsePositiveInteger(
-    process.env.MAX_CONCURRENCY,
-    defaultConcurrency,
-  );
+  const defaultConcurrency = Math.max(1, Math.floor(cpuCount / Math.max(workerCount, 1)) || 1);
+  const maxConcurrency = parsePositiveInteger(process.env.MAX_CONCURRENCY, defaultConcurrency);
   const maxQueueSize = parseNonNegativeInteger(
     process.env.MAX_QUEUE_SIZE,
     Math.max(maxConcurrency * 4, maxConcurrency),
   );
-  const keepAliveTimeoutMs = parsePositiveInteger(
-    process.env.KEEP_ALIVE_TIMEOUT_MS,
-    65000,
-  );
+  const keepAliveTimeoutMs = parsePositiveInteger(process.env.KEEP_ALIVE_TIMEOUT_MS, 65000);
   const headersTimeoutMs = Math.max(
     keepAliveTimeoutMs + 5000,
     parsePositiveInteger(process.env.HEADERS_TIMEOUT_MS, 70000),
@@ -149,18 +142,14 @@ export function resolveConfig(
     bodyLimit: overrides.bodyLimit ?? bodyLimit,
     maxConcurrency: overrides.maxConcurrency ?? maxConcurrency,
     maxQueueSize: overrides.maxQueueSize ?? maxQueueSize,
-    keepAliveTimeoutMs:
-      overrides.keepAliveTimeoutMs ?? keepAliveTimeoutMs,
+    keepAliveTimeoutMs: overrides.keepAliveTimeoutMs ?? keepAliveTimeoutMs,
     headersTimeoutMs: overrides.headersTimeoutMs ?? headersTimeoutMs,
   };
 }
 
 export function createRenderApp(config: ServerConfig): Express {
   const app = express();
-  const concurrencyGate = new ConcurrencyGate(
-    config.maxConcurrency,
-    config.maxQueueSize,
-  );
+  const concurrencyGate = new ConcurrencyGate(config.maxConcurrency, config.maxQueueSize);
 
   app.disable('x-powered-by');
   app.use(express.json({ limit: config.bodyLimit }));
@@ -177,76 +166,65 @@ export function createRenderApp(config: ServerConfig): Express {
     });
   });
 
-  app.post(
-    '/render',
-    async (req: Request, res: Response, next: NextFunction) => {
-      let acquired = false;
-      let renderResult: Awaited<ReturnType<typeof render>> | undefined;
-      try {
-        const payload = normalizeRequest(req.body);
-        await concurrencyGate.acquire();
-        acquired = true;
+  app.use('/images', express.static(imagesDir));
 
-        const start = process.hrtime.bigint();
-        renderResult = await render(payload.options);
-        const buffer = renderResult.toBuffer(payload.meta);
-        const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+  app.post('/render', async (req: Request, res: Response) => {
+    let acquired = false;
+    let renderResult: Awaited<ReturnType<typeof render>> | undefined;
+    try {
+      const options = normalizeOptions(req.body);
+      await concurrencyGate.acquire();
+      acquired = true;
 
-        const responseType = payload.responseType ?? 'buffer';
-        const contentType = payload.contentType ?? 'image/png';
+      const start = process.hrtime.bigint();
+      renderResult = await render(options);
+      const buffer = await Promise.resolve(renderResult.toBuffer());
+      const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
 
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('X-Render-Time', elapsedMs.toFixed(2));
+      const filename = `${randomUUID()}.png`;
+      const filePath = path.join(imagesDir, filename);
+      await fs.writeFile(filePath, buffer);
 
-        if (payload.fileName && responseType === 'buffer') {
-          res.setHeader(
-            'Content-Disposition',
-            `inline; filename="${sanitizeFileName(payload.fileName)}"`,
-          );
-        }
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Render-Time', elapsedMs.toFixed(2));
 
-        if (responseType === 'base64') {
-          res.json({
-            contentType,
-            data: buffer.toString('base64'),
-            elapsedMs,
-          });
-          return;
-        }
+      const hostHeader = req.get('host');
+      const host =
+        hostHeader && hostHeader.trim().length > 0 ? hostHeader : `${config.host}:${config.port}`;
+      const protocol = req.protocol ?? 'http';
+      const imageUrl = `${protocol}://${host}/images/${filename}`;
 
-        res.setHeader('Content-Type', contentType);
-        res.setHeader('Content-Length', String(buffer.length));
-        res.end(buffer);
-      } catch (error) {
-        if (error instanceof ServiceBusyError) {
-          res
-            .status(error.status)
-            .json({ error: error.code, message: error.message });
-          return;
-        }
-
-        if (error instanceof HttpError) {
-          res.status(error.status).json({
-            error: error.code,
-            message: error.message,
-            details: error.details,
-          });
-          return;
-        }
-
-        next(error);
+      res.json({
+        success: true,
+        resultObj: imageUrl,
+      });
+    } catch (error) {
+      if (error instanceof HttpError) {
+        res.status(error.status).json({
+          success: false,
+          errorMessage: error.message,
+        });
         return;
-      } finally {
-        if (acquired) {
-          concurrencyGate.release();
-        }
-        renderResult?.destroy();
       }
-    },
-  );
+
+      console.error('渲染图表时出错:', error);
+      res.status(500).json({
+        success: false,
+        errorMessage: `渲染图表失败: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      });
+    } finally {
+      if (acquired) {
+        concurrencyGate.release();
+      }
+      renderResult?.destroy();
+    }
+  });
 
   app.use((_req, res) => {
-    res.status(404).json({ error: 'not_found', message: 'Route not found' });
+    res.status(404).json({
+      success: false,
+      errorMessage: 'Route not found',
+    });
   });
 
   app.use(
@@ -259,16 +237,18 @@ export function createRenderApp(config: ServerConfig): Express {
     ) => {
       if (isJsonSyntaxError(err)) {
         res.status(400).json({
-          error: 'invalid_json',
-          message: 'Request body must be valid JSON.',
+          success: false,
+          errorMessage: 'Request body must be valid JSON.',
         });
         return;
       }
 
       console.error('Unexpected error while handling request', err);
       res.status(500).json({
-        error: 'internal_error',
-        message: 'Unexpected error while rendering chart.',
+        success: false,
+        errorMessage: `渲染图表失败: ${
+          err instanceof Error ? err.message : 'Unexpected error while rendering chart.'
+        }`,
       });
     },
   );
@@ -323,87 +303,35 @@ function setupGracefulShutdown(server: Server) {
   });
 }
 
-function normalizeRequest(body: unknown): RenderRequestBody {
+function normalizeOptions(body: unknown): Options {
   if (!body || typeof body !== 'object') {
-    throw new HttpError(
-      'Request body must be a JSON object with an "options" property.',
-      400,
-      'invalid_request',
-    );
+    throw new HttpError('缺少必要的参数: type 或 data', 400, 'invalid_request');
   }
 
-  const payload = body as Partial<RenderRequestBody>;
+  const container = body as { options?: unknown };
+  const hasNestedOptions =
+    container !== null &&
+    typeof container === 'object' &&
+    Object.prototype.hasOwnProperty.call(container, 'options') &&
+    container.options !== null &&
+    typeof container.options === 'object';
+  const candidate = hasNestedOptions ? container.options : body;
 
-  if (!payload.options || typeof payload.options !== 'object') {
-    throw new HttpError(
-      'Missing "options" property in request body.',
-      400,
-      'invalid_request',
-    );
+  if (!candidate || typeof candidate !== 'object') {
+    throw new HttpError('缺少必要的参数: type 或 data', 400, 'invalid_request');
   }
 
-  if (typeof payload.options.type !== 'string') {
-    throw new HttpError(
-      '"options.type" must be a string corresponding to a supported chart type.',
-      400,
-      'invalid_request',
-    );
+  const options = candidate as Record<string, unknown>;
+
+  if (typeof options.type !== 'string' || options.type.trim().length === 0) {
+    throw new HttpError('缺少必要的参数: type 或 data', 400, 'invalid_request');
   }
 
-  if (
-    payload.responseType &&
-    payload.responseType !== 'buffer' &&
-    payload.responseType !== 'base64'
-  ) {
-    throw new HttpError(
-      '"responseType" must be either "buffer" or "base64".',
-      400,
-      'invalid_request',
-    );
+  if (!Object.prototype.hasOwnProperty.call(options, 'data')) {
+    throw new HttpError('缺少必要的参数: type 或 data', 400, 'invalid_request');
   }
 
-  if (
-    payload.contentType !== undefined &&
-    typeof payload.contentType !== 'string'
-  ) {
-    throw new HttpError(
-      '"contentType" must be a string when provided.',
-      400,
-      'invalid_request',
-    );
-  }
-
-  if (
-    payload.fileName !== undefined &&
-    typeof payload.fileName !== 'string'
-  ) {
-    throw new HttpError(
-      '"fileName" must be a string when provided.',
-      400,
-      'invalid_request',
-    );
-  }
-
-  const contentType =
-    typeof payload.contentType === 'string'
-      ? payload.contentType.trim() || undefined
-      : undefined;
-  const fileName =
-    typeof payload.fileName === 'string'
-      ? payload.fileName.trim() || undefined
-      : undefined;
-
-  return {
-    options: payload.options as Options,
-    meta: payload.meta,
-    responseType: payload.responseType,
-    contentType,
-    fileName,
-  };
-}
-
-function sanitizeFileName(name: string): string {
-  return name.replace(/[^\w.\-]/g, '_');
+  return candidate as Options;
 }
 
 function isJsonSyntaxError(error: unknown): boolean {
@@ -414,10 +342,7 @@ function isJsonSyntaxError(error: unknown): boolean {
   return err.type === 'entity.parse.failed';
 }
 
-function parsePositiveInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }
@@ -425,10 +350,7 @@ function parsePositiveInteger(
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function parseNonNegativeInteger(
-  value: string | undefined,
-  fallback: number,
-): number {
+function parseNonNegativeInteger(value: string | undefined, fallback: number): number {
   if (!value) {
     return fallback;
   }
@@ -447,10 +369,7 @@ function getAvailableParallelism(): number {
 }
 
 function determineWorkerCount(): number {
-  const requested = parsePositiveInteger(
-    process.env.WORKERS,
-    4,
-  );
+  const requested = parsePositiveInteger(process.env.WORKERS, 4);
   return Math.max(1, Math.min(getAvailableParallelism(), requested));
 }
 
@@ -467,8 +386,7 @@ export async function bootstrap(): Promise<void> {
     }
 
     cluster.on('exit', (worker, code, signal) => {
-      const graceful =
-        code === 0 || signal === 'SIGINT' || signal === 'SIGTERM';
+      const graceful = code === 0 || signal === 'SIGINT' || signal === 'SIGTERM';
       const exitLog = `[primary] worker ${worker.id} exited (code=${code}, signal=${signal})`;
 
       if (graceful) {
