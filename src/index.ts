@@ -467,9 +467,16 @@ export async function bootstrap(): Promise<void> {
     }
 
     cluster.on('exit', (worker, code, signal) => {
-      console.warn(
-        `[primary] worker ${worker.id} exited (code=${code}, signal=${signal}), restarting...`,
-      );
+      const graceful =
+        code === 0 || signal === 'SIGINT' || signal === 'SIGTERM';
+      const exitLog = `[primary] worker ${worker.id} exited (code=${code}, signal=${signal})`;
+
+      if (graceful) {
+        console.log(`${exitLog}, not restarting`);
+        return;
+      }
+
+      console.warn(`${exitLog}, restarting...`);
       cluster.fork({
         ...process.env,
         SERVER_WORKER_COUNT: String(workerCount),
