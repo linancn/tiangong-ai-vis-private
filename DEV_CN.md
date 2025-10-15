@@ -295,7 +295,7 @@ curl http://localhost:3000/healthz
 npm login
 
 # 发布
-npm update && npm ci
+npm run build && npm publish
 ```
 
 ### 5. 验证发布
