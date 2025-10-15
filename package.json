@@ -1,0 +1,41 @@
+{
+  "name": "@tiangong-ai/vis-server",
+  "version": "0.0.22",
+  "description": "TianGong AI VIS Private Server",
+  "license": "MIT",
+  "author": "Nan LI",
+  "type": "module",
+  "bin": {
+    "tiangong-ai-vis-private": "dist/src/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "shx rm -rf dist && tsc && shx cp -r public dist/ && shx chmod +x dist/src/*.js",
+    "build:clean": "shx rm -rf dist",
+    "start": "npm run build && npx dotenv -e .env -- node dist/src/index.js",
+    "test": "node test/tidas_validation_test.js",
+    "lint": "prettier -c --write \"**/**.{js,jsx,tsx,ts,less,md,json}\"",
+    "ncu": "npx npm-check-updates",
+    "ncu:update": "npx npm-check-updates -u"
+  },
+  "dependencies": {
+    "@antv/gpt-vis-ssr": "^0.3.1",
+    "@types/express": "^5.0.3",
+    "express": "^4.21.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "dotenv-cli": "^10.0.0",
+    "npm-check-updates": "^19.0.0",
+    "prettier": "^3.6.2",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "shx": "^0.4.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
