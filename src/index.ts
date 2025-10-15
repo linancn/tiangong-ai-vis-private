@@ -12,7 +12,6 @@ import express, {
 } from 'express';
 import { render } from '@antv/gpt-vis-ssr';
 import type { Options } from '@antv/gpt-vis-ssr/dist/esm/types.js';
-import { pathToFileURL } from 'node:url';
 
 type ResponseType = 'buffer' | 'base64';
 
@@ -455,7 +454,7 @@ function determineWorkerCount(): number {
   return Math.max(1, Math.min(getAvailableParallelism(), requested));
 }
 
-async function bootstrap(): Promise<void> {
+export async function bootstrap(): Promise<void> {
   if (cluster.isPrimary) {
     const workerCount = determineWorkerCount();
     console.log(`[primary] starting ${workerCount} worker(s)...`);
@@ -481,16 +480,5 @@ async function bootstrap(): Promise<void> {
 
   await startServer({
     // The per-worker default concurrency is computed inside resolveConfig.
-  });
-}
-
-const isCliEntrypoint =
-  typeof process.argv[1] === 'string' &&
-  pathToFileURL(process.argv[1]).href === import.meta.url;
-
-if (isCliEntrypoint) {
-  bootstrap().catch((error) => {
-    console.error('Failed to start GPT-Vis SSR service', error);
-    process.exit(1);
   });
 }

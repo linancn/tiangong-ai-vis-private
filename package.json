@@ -1,6 +1,6 @@
 {
   "name": "@tiangong-ai/vis-server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A high-performance chart rendering service based on @antv/gpt-vis-ssr with cluster support, concurrency control, and HTTP API",
   "keywords": [
     "visualization",
@@ -18,7 +18,7 @@
   "author": "Nan LI",
   "type": "module",
   "bin": {
-    "tiangong-ai-vis-private": "dist/src/index.js"
+    "tiangong-ai-vis-private": "dist/src/cli.js"
   },
   "files": [
     "dist"
