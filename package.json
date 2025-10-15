@@ -36,7 +36,8 @@
   "scripts": {
     "build": "shx rm -rf dist && tsc && shx chmod +x dist/src/*.js",
     "build:clean": "shx rm -rf dist",
-    "start": "npm run build && npx dotenv -e .env -- node dist/src/index.js",
+    "start": "npm run build && node dist/src/index.js",
+    "start:env": "npm run build && npx dotenv -e .env -- node dist/src/index.js",
     "test": "node test/tidas_validation_test.js",
     "lint": "prettier -c --write \"**/**.{js,jsx,tsx,ts,less,md,json}\"",
     "ncu": "npx npm-check-updates",
