@@ -1,6 +1,6 @@
 {
   "name": "@tiangong-ai/vis-server",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A high-performance chart rendering service based on @antv/gpt-vis-ssr with cluster support, concurrency control, and HTTP API",
   "keywords": [
     "visualization",
